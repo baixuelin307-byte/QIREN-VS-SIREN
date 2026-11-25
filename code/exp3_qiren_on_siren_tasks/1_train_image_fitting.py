@@ -1,4 +1,4 @@
-# ===== QIREN 跑 SIREN 原论文的图像拟合任务（GPU 快速精确版；可断点续跑；保存最好权重）=====
+# ===== QIREN on SIREN's image fitting task (fast exact GPU simulation; resumable; saves the best weights) =====
 import os, sys, time, json, copy, subprocess, importlib.util
 from pathlib import Path
 
@@ -8,7 +8,7 @@ if not os.path.exists('/content/drive/MyDrive'):
     drive.mount('/content/drive')
 OUT = Path('/content/drive/MyDrive/QIREN_paper_recheck'); OUT.mkdir(parents=True, exist_ok=True)
 
-# ---------- 2. QIREN 官方代码（固定 commit）+ 必要补丁 ----------
+# ---------- 2. Official QIREN code (pinned commit) + required patches ----------
 ROOT = Path('/content/QIREN_paper_recheck_repo'); QINR = ROOT / 'qinr'
 SHA = '56ab4010ee3fbb3371c9d5d5f5284a8c41d4e6f3'
 if not QINR.exists():
@@ -29,15 +29,15 @@ qiren_modules = importlib.util.module_from_spec(spec); spec.loader.exec_module(q
 import numpy as np, torch
 from torch.utils.data import DataLoader
 dev = 'cuda' if torch.cuda.is_available() else 'cpu'
-print('设备:', torch.cuda.get_device_name(0) if dev == 'cuda' else 'CPU')
+print('Device:', torch.cuda.get_device_name(0) if dev == 'cuda' else 'CPU')
 
 def make_qiren():
     return qiren_modules.Hybridren(in_features=2, out_features=1, hidden_features=8,
                                    hidden_layers=2, spectrum_layer=2, use_noise=0)
 
-# ---------- 3. 量子层的精确快速实现（与官方 PennyLane 电路数学上相同）----------
-#   官方电路：|psi> = SEL(w2) · D(x) · SEL(w1[1]) · D(x) · SEL(w1[0]) |0>，输出 <Z_i>
-#   SEL 只依赖权重，D(x) = RZ(x_0)⊗...⊗RZ(x_7) 是对角相位，所以可以写成矩阵乘法
+# ---------- 3. Exact fast implementation of the quantum layer (mathematically identical to the official PennyLane circuit) ----------
+#   Official circuit: |psi> = SEL(w2) · D(x) · SEL(w1[1]) · D(x) · SEL(w1[0]) |0>, output <Z_i>
+#   SEL depends only on the weights and D(x) = RZ(x_0)⊗...⊗RZ(x_7) is a diagonal phase, so the circuit is a sequence of matrix products
 def _rot(w):                     # qml.Rot(phi, theta, omega) = RZ(omega) RY(theta) RZ(phi)
     phi, th, om = w[..., 0], w[..., 1], w[..., 2]
     c, sn = torch.cos(th / 2), torch.sin(th / 2)
@@ -46,7 +46,7 @@ def _rot(w):                     # qml.Rot(phi, theta, omega) = RZ(omega) RY(the
     m10 = e(-(phi - om) / 2) * sn; m11 = e((phi + om) / 2) * c
     return torch.stack([torch.stack([m00, m01], -1), torch.stack([m10, m11], -1)], -2)
 
-def _sel_matrix(W, n):           # StronglyEntanglingLayers(imprimitive=CZ, 默认 ranges) 的酉矩阵
+def _sel_matrix(W, n):           # unitary of StronglyEntanglingLayers(imprimitive=CZ, default ranges)
     bits = (torch.arange(2 ** n, device=W.device)[:, None] >> (n - 1 - torch.arange(n, device=W.device))) & 1
     U = torch.eye(2 ** n, dtype=torch.complex64, device=W.device)
     R = _rot(W)
@@ -81,7 +81,7 @@ def make_fast_qiren():
             m.forward = fast_forward.__get__(m)
     return net
 
-# 自检：在你的 GPU 上和官方实现逐项对比（同一份权重、同一批输入）
+# Self-check on this GPU against the official implementation (same weights, same inputs)
 torch.manual_seed(0)
 ref = make_qiren().to(dev).train(); fast = make_fast_qiren().to(dev).train()
 fast.load_state_dict(ref.state_dict())
@@ -90,11 +90,11 @@ o1, _ = ref(xt); o1.pow(2).mean().backward()
 o2, _ = fast(xt); o2.pow(2).mean().backward()
 d_out = (o1 - o2).abs().max().item()
 d_grad = max((a.grad - b.grad).abs().max().item() for a, b in zip(ref.parameters(), fast.parameters()))
-print(f'自检：输出最大差 {d_out:.2e}，梯度最大差 {d_grad:.2e}，参数量 {sum(p.numel() for p in fast.parameters())}')
-assert d_out < 1e-4 and d_grad < 1e-4, '快速实现与官方实现不一致，停止'
+print(f'Self-check: max output diff {d_out:.2e}, max gradient diff {d_grad:.2e}, parameters {sum(p.numel() for p in fast.parameters())}')
+assert d_out < 1e-4 and d_grad < 1e-4, 'Fast implementation disagrees with the official one; stopping'
 del ref, fast
 
-# ---------- 4. SIREN 官方仓库的图像数据（cameraman，256×256，与你跑 SIREN 时相同）----------
+# ---------- 4. Image data from the official SIREN repository (cameraman, 256×256, same as our SIREN runs) ----------
 SIREN = '/content/siren'
 if not os.path.exists(SIREN):
     subprocess.run(['git', 'clone', '-q', 'https://github.com/vsitzmann/siren.git', SIREN], check=True)
@@ -105,11 +105,11 @@ import dataio
 model_input, gt = next(iter(DataLoader(dataio.Implicit2DWrapper(dataio.Camera(), sidelength=256), batch_size=1)))
 x, y = model_input['coords'].to(dev), gt['img'].to(dev)
 
-# ---------- 5. 训练：SIREN 设置 = Adam, lr 1e-4, 15,000 步, 全图一个 batch ----------
+# ---------- 5. Training with SIREN's settings: Adam, lr 1e-4, 15,000 steps, full image as one batch ----------
 STEPS, LR, SEED, SAVE_EVERY = 15000, 1e-4, 0, 200
 SAVE = OUT / 'qiren_on_siren_tasks' / 'image_fitting_gpu'; SAVE.mkdir(parents=True, exist_ok=True)
 STATE, BEST = SAVE / 'resume_state.pth', SAVE / 'best_weights.pth'
-def psnr(mse): return 10 * np.log10(1 / (mse / 4))   # 与 SIREN 一致：像素映射到 [0,1]
+def psnr(mse): return 10 * np.log10(1 / (mse / 4))   # as in SIREN: pixels mapped to [0,1]
 
 torch.manual_seed(SEED); np.random.seed(SEED)
 net = make_fast_qiren().to(dev).train()
@@ -119,7 +119,7 @@ if STATE.exists():
     st = torch.load(STATE, map_location=dev, weights_only=False)
     net.load_state_dict(st['model']); opt.load_state_dict(st['opt'])
     step, best, best_step, losses = st['step'], st['best'], st['best_step'], st['losses']
-    print(f'从第 {step} 步继续，目前最好 PSNR {psnr(best):.2f} dB（第 {best_step} 步）')
+    print(f'Resuming from step {step}, best PSNR so far {psnr(best):.2f} dB (step {best_step})')
 
 def save_all():
     if best_sd is not None:
@@ -134,7 +134,7 @@ while step < STEPS:
     out, _ = net(x)
     loss = ((out - y) ** 2).mean()
     l = loss.item(); losses.append(l)
-    if l < best:                                       # 这个 loss 对应当前权重，先记下再更新
+    if l < best:                                       # this loss belongs to the current weights: record before the update
         best, best_step = l, step
         best_sd = {k: v.detach().clone().cpu() for k, v in net.state_dict().items()}
     opt.zero_grad(); loss.backward(); opt.step(); step += 1
@@ -143,12 +143,12 @@ while step < STEPS:
             save_all()
         per = (time.time() - t0) / (step - start)
         print(f'step {step}/{STEPS}  PSNR {psnr(l):.2f} dB  best {psnr(best):.2f} dB @ {best_step}'
-              f'  | {per:.3f}s/步，剩余约 {per * (STEPS - step) / 60:.0f} 分钟', flush=True)
+              f'  | {per:.3f}s/step, about {per * (STEPS - step) / 60:.0f} min left', flush=True)
 
 save_all()
 res = dict(task='image_fitting (SIREN, cameraman 256x256)', steps=STEPS, lr=LR, seed=SEED,
            best_step=best_step, best_mse=best, best_psnr=psnr(best),
            psnr_last1000_mean=float(np.mean([psnr(v) for v in losses[-1000:]])))
 json.dump(res, open(SAVE / 'result.json', 'w'), indent=2)
-print('\n完成：', res)
-print('对照 SIREN（你的复现，同一任务）：最后 1,000 步平均 PSNR 约 56.7 dB；ReLU 25.8，Tanh 26.1，ReLU P.E. 43.3')
+print('\nDone:', res)
+print('SIREN reference (our reproduction, same task): mean PSNR over the last 1,000 steps about 56.7 dB; ReLU 25.8, Tanh 26.1, ReLU P.E. 43.3')

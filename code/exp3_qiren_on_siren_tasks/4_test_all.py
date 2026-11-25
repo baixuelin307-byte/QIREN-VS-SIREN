@@ -1,5 +1,5 @@
-# ===== 测试：用最好权重，按 SIREN 原论文的测试方式评估 QIREN（和 SIREN）=====
-# 只测试，不训练
+# ===== Test: evaluate QIREN (and SIREN) from the best weights with the SIREN paper's test protocol =====
+# Test only, no training
 import os, sys, time, json, copy, subprocess, importlib.util
 from pathlib import Path
 
@@ -9,7 +9,7 @@ if not os.path.exists('/content/drive/MyDrive'):
     drive.mount('/content/drive')
 OUT = Path('/content/drive/MyDrive/QIREN_paper_recheck'); OUT.mkdir(parents=True, exist_ok=True)
 
-# ---------- 2. QIREN 官方代码（固定 commit）+ 必要补丁 ----------
+# ---------- 2. Official QIREN code (pinned commit) + required patches ----------
 ROOT = Path('/content/QIREN_paper_recheck_repo'); QINR = ROOT / 'qinr'
 SHA = '56ab4010ee3fbb3371c9d5d5f5284a8c41d4e6f3'
 if not QINR.exists():
@@ -30,15 +30,15 @@ qiren_modules = importlib.util.module_from_spec(spec); spec.loader.exec_module(q
 import numpy as np, torch
 from torch.utils.data import DataLoader
 dev = 'cuda' if torch.cuda.is_available() else 'cpu'
-print('设备:', torch.cuda.get_device_name(0) if dev == 'cuda' else 'CPU')
+print('Device:', torch.cuda.get_device_name(0) if dev == 'cuda' else 'CPU')
 
 def make_qiren(in_f=2, out_f=1):
     return qiren_modules.Hybridren(in_features=in_f, out_features=out_f, hidden_features=8,
                                    hidden_layers=2, spectrum_layer=2, use_noise=0)
 
-# ---------- 3. 量子层的精确快速实现（与官方 PennyLane 电路数学上相同）----------
-#   官方电路：|psi> = SEL(w2) · D(x) · SEL(w1[1]) · D(x) · SEL(w1[0]) |0>，输出 <Z_i>
-#   SEL 只依赖权重，D(x) = RZ(x_0)⊗...⊗RZ(x_7) 是对角相位，所以可以写成矩阵乘法
+# ---------- 3. Exact fast implementation of the quantum layer (mathematically identical to the official PennyLane circuit) ----------
+#   Official circuit: |psi> = SEL(w2) · D(x) · SEL(w1[1]) · D(x) · SEL(w1[0]) |0>, output <Z_i>
+#   SEL depends only on the weights and D(x) = RZ(x_0)⊗...⊗RZ(x_7) is a diagonal phase, so the circuit is a sequence of matrix products
 def _rot(w):                     # qml.Rot(phi, theta, omega) = RZ(omega) RY(theta) RZ(phi)
     phi, th, om = w[..., 0], w[..., 1], w[..., 2]
     c, sn = torch.cos(th / 2), torch.sin(th / 2)
@@ -47,7 +47,7 @@ def _rot(w):                     # qml.Rot(phi, theta, omega) = RZ(omega) RY(the
     m10 = e(-(phi - om) / 2) * sn; m11 = e((phi + om) / 2) * c
     return torch.stack([torch.stack([m00, m01], -1), torch.stack([m10, m11], -1)], -2)
 
-def _sel_matrix(W, n):           # StronglyEntanglingLayers(imprimitive=CZ, 默认 ranges) 的酉矩阵
+def _sel_matrix(W, n):           # unitary of StronglyEntanglingLayers(imprimitive=CZ, default ranges)
     bits = (torch.arange(2 ** n, device=W.device)[:, None] >> (n - 1 - torch.arange(n, device=W.device))) & 1
     U = torch.eye(2 ** n, dtype=torch.complex64, device=W.device)
     R = _rot(W)
@@ -82,7 +82,7 @@ def make_fast_qiren(in_f=2, out_f=1):
             m.forward = fast_forward.__get__(m)
     return net
 
-# 自检：在你的 GPU 上和官方实现逐项对比（同一份权重、同一批输入）
+# Self-check on this GPU against the official implementation (same weights, same inputs)
 torch.manual_seed(0)
 ref = make_qiren().to(dev).train(); fast = make_fast_qiren().to(dev).train()
 fast.load_state_dict(ref.state_dict())
@@ -91,13 +91,13 @@ o1, _ = ref(xt); o1.pow(2).mean().backward()
 o2, _ = fast(xt); o2.pow(2).mean().backward()
 d_out = (o1 - o2).abs().max().item()
 d_grad = max((a.grad - b.grad).abs().max().item() for a, b in zip(ref.parameters(), fast.parameters()))
-print(f'自检：输出最大差 {d_out:.2e}，梯度最大差 {d_grad:.2e}，参数量 {sum(p.numel() for p in fast.parameters())}')
-assert d_out < 1e-4 and d_grad < 1e-4, '快速实现与官方实现不一致，停止'
+print(f'Self-check: max output diff {d_out:.2e}, max gradient diff {d_grad:.2e}, parameters {sum(p.numel() for p in fast.parameters())}')
+assert d_out < 1e-4 and d_grad < 1e-4, 'Fast implementation disagrees with the official one; stopping'
 del ref, fast
 
 
 import re
-# ---------- 4. SIREN 官方仓库（测试数据、SIREN 模型都用它的）----------
+# ---------- 4. Official SIREN repository (test data and SIREN models) ----------
 SIREN = '/content/siren'
 if not os.path.exists(SIREN):
     subprocess.run(['git', 'clone', '-q', 'https://github.com/vsitzmann/siren.git', SIREN], check=True)
@@ -118,35 +118,35 @@ rows, figs = [], {}
 
 def load_qiren(path, in_f, out_f):
     sd = torch.load(path, map_location=dev, weights_only=False)['model_state_dict']
-    if any(k.startswith('net.net.') for k in sd):            # 训练时外面包了一层 wrapper
+    if any(k.startswith('net.net.') for k in sd):            # training wrapped the model in one more layer
         sd = {k[4:]: v for k, v in sd.items()}
-    net = make_fast_qiren(in_f, out_f).to(dev).train()      # 与训练相同：BatchNorm 用批统计
+    net = make_fast_qiren(in_f, out_f).to(dev).train()      # as in training: BatchNorm uses batch statistics
     net.load_state_dict(sd); return net
 
-def psnr(mse): return 10 * math.log10(1 / mse)             # 像素在 [0,1]
+def psnr(mse): return 10 * math.log10(1 / mse)             # pixels in [0,1]
 
-# ---------- 5. 图像拟合：整张 256×256 cameraman，PSNR（预测截断到 [0,1]，与 SIREN 相同）----------
+# ---------- 5. Image fitting: full 256×256 cameraman, PSNR (prediction clipped to [0,1], as in SIREN) ----------
 p = R / 'image_fitting_gpu' / 'best_weights.pth'
 if p.exists():
     inp, gt = dataio.Implicit2DWrapper(dataio.Camera(), sidelength=256)[0]
     x, y = inp['coords'][None].to(dev), gt['img'][None].to(dev)
     with torch.no_grad():
-        out, _ = load_qiren(p, 2, 1)(x)                     # 整张图一个 batch，与训练相同
+        out, _ = load_qiren(p, 2, 1)(x)                     # full image as one batch, as in training
     pred, g = (out / 2 + 0.5).clamp(0, 1), y / 2 + 0.5
     rows.append(dict(task='Image fitting (cameraman 256×256)', model='QIREN', metric='PSNR (dB)',
                      value=round(psnr(((pred - g) ** 2).mean().item()), 2), note='full image'))
     figs['image'] = (g[0].reshape(256, 256).cpu().numpy(), pred[0].reshape(256, 256).cpu().numpy())
 else:
-    print('没找到图像拟合的最好权重:', p)
+    print('Best image-fitting weights not found:', p)
 
-# ---------- 6. 音频：整段信号 MSE（与 SIREN train_audio.py 的损失相同）----------
+# ---------- 6. Audio: MSE on the full signal (same as the loss in SIREN train_audio.py) ----------
 for wav in ['gt_bach', 'gt_counting']:
     inp, gt = dataio.ImplicitAudioWrapper(dataio.AudioFile(filename=f'{SIREN}/data/{wav}.wav'))[0]
     x, y = inp['coords'][None].to(dev), gt['func'][None].to(dev)
     for mname in ['QIREN', 'SIREN']:
         p = R / f'audio_{wav}__{mname}' / 'best_weights.pth'
         if not p.exists():
-            print('没找到:', p); continue
+            print('Not found:', p); continue
         with torch.no_grad():
             if mname == 'QIREN':
                 out, _ = load_qiren(p, 1, 1)(x)
@@ -157,7 +157,7 @@ for wav in ['gt_bach', 'gt_counting']:
         rows.append(dict(task=f'Audio: {wav[3:].capitalize()}', model=mname, metric='MSE',
                          value=float(f'{((out - y) ** 2).mean().item():.4e}'), note='full signal'))
 
-# ---------- 7. 视频：所有帧逐帧 PSNR，报告均值 ± 标准差（SIREN 论文的报告方式）----------
+# ---------- 7. Video: PSNR of every frame, reported as mean ± std (as in the SIREN paper) ----------
 vpath = OUT / 'data' / 'cat_video.mp4'
 cap, frames = cv2.VideoCapture(str(vpath)), []
 while True:
@@ -167,9 +167,9 @@ while True:
 cap.release()
 vid = torch.from_numpy(np.stack(frames).astype(np.float32) / 255.).to(dev)
 T, H, W, C = vid.shape; N = T * H * W
-print('cat 视频:', tuple(vid.shape))
+print('Cat video:', tuple(vid.shape))
 
-def coords_of(idx):                                        # 与 dataio.get_mgrid(dim=3) 相同
+def coords_of(idx):                                        # same as dataio.get_mgrid(dim=3)
     t, r, c = idx // (H * W), (idx // W) % H, idx % W
     return torch.stack([(t / max(T - 1, 1) - 0.5) * 2, (r / (H - 1) - 0.5) * 2, (c / (W - 1) - 0.5) * 2], -1).float()
 
@@ -186,13 +186,13 @@ for typ in ['sine', 'relu']:
     cands = [ck / 'model_final.pth'] if (ck / 'model_final.pth').exists() else \
             sorted(ck.glob('model_epoch_*.pth'), key=lambda q: int(re.findall(r'\d+', q.stem)[-1]))[-1:]
     if cands: video_models.append((f'SIREN official ({typ})', cands[0]))
-    else: print('没找到 SIREN 视频权重:', ck)
+    else: print('SIREN video weights not found:', ck)
 
 for mname, p in video_models:
     pred = torch.empty(N, C, device=dev)
     with torch.no_grad():
         if mname == 'QIREN':
-            # QIREN 的 BatchNorm 用批统计：按训练时的方式，把全部像素随机打乱后分成和训练 batch 一样大的块
+            # QIREN's BatchNorm uses batch statistics: as in training, shuffle all pixels and split them into chunks of the training batch size
             net = load_qiren(p, 3, 3)
             NS = int(38e-4 * N)
             perm = torch.randperm(N, device=dev, generator=torch.Generator(device=dev).manual_seed(0))
@@ -212,12 +212,12 @@ for mname, p in video_models:
     figs[mname] = p01[[0, T // 2, T - 1]].cpu().numpy()
     del pred, p01; torch.cuda.empty_cache() if dev == 'cuda' else None
 
-# ---------- 8. 结果表 + 图 ----------
+# ---------- 8. Results table + figure ----------
 df = pd.DataFrame(rows)
 pd.set_option('display.width', 200); pd.set_option('display.max_colwidth', 60)
-print('\n===== 测试结果（最好权重，按 SIREN 的测试方式）=====')
+print('\n===== Test results (best weights, SIREN test protocol) =====')
 print(df.to_string(index=False))
-print('\n对照 SIREN 图像拟合（你的复现）：SIREN 56.74 dB，ReLU P.E. 43.25，RBF-ReLU 31.26，Tanh 26.05，ReLU 25.83')
+print('\nSIREN image-fitting reference (our reproduction): SIREN 56.74 dB, ReLU P.E. 43.25, RBF-ReLU 31.26, Tanh 26.05, ReLU 25.83')
 df.to_csv(R / 'test_results.csv', index=False)
 
 vmods = [m for m in figs if m != 'image']
@@ -236,7 +236,7 @@ for r, fi in enumerate([0, T // 2, T - 1]):
         ax[ri + r, j].imshow(figs[m][r]); ax[ri + r, j].set_title(f'{m}, frame {fi}', fontsize=9)
 for a in ax.ravel(): a.axis('off')
 plt.tight_layout(); fp = R / 'test_figure.png'; plt.savefig(fp, dpi=120)
-print('\n结果表:', R / 'test_results.csv'); print('图:', fp)
+print('\nResults table:', R / 'test_results.csv'); print('Figure:', fp)
 try:
     from IPython.display import Image as _I, display; display(_I(str(fp)))
 except Exception:
