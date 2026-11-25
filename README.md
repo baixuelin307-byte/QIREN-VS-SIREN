@@ -289,6 +289,22 @@ Code: [`code/exp4_head_to_head/`](code/exp4_head_to_head). Full output: [`result
 
 **How faithful is the reproduction?** The experimental pipeline reproduces the paper (baselines match, and QIREN's ranking against the classical baselines holds). QIREN's absolute representation errors are 14–70% higher than reported. Part of this is run-to-run variation (see below), and the paper's undisclosed SIREN settings make that comparison impossible to match exactly.
 
+### Where each model is better
+
+**SIREN is better at:**
+- **Accuracy at the training resolution:** wins all 4 tasks at ~700 parameters (Camera MSE 0.62 vs. 1.87 ×10⁻³), by 1.7–4.8 dB PSNR (Experiments 2 and 4).
+- **Fine detail:** its mid- and high-frequency errors are 1.5–4× lower; low-frequency errors are equal (Experiment 4B).
+- **Large signals:** +33 dB on the 256×256 image, +13.5 dB on the video, 30–4,000× lower audio MSE (Experiment 3, at SIREN's scale).
+- **Robustness:** at 0.3% relative weight noise it loses 1.2 dB vs. QIREN's 5 dB; at 8 bits it loses ~2 dB vs. QIREN's 5–7 dB (Experiment 4C–D).
+- **Range of tasks:** supports derivative-based tasks (Poisson, SDF, Helmholtz); QIREN's input Laplacian is identically zero because of BatchNorm (Experiment 3).
+- **Compute cost:** QIREN is ~20–25× slower because its circuit is simulated (Experiments 2 and 3).
+
+**QIREN is better at:**
+- **Unseen resolutions (super-resolution):** wins all 9 cases from ×2 to ×8, by 0.1–1.7 dB, and beats tuned SIREN on Coffee 32→64 (MSE 9.18 vs. 13.55 ×10⁻³) (Experiments 2 and 4A).
+- **Resolution generalization:** SR error ÷ representation error is ~5, vs. 12–16 for SIREN (Experiment 2).
+- **Parameter efficiency:** with 657 parameters it is within ~2 dB of ReLU and Tanh networks that have ~300× more parameters (Experiment 3).
+- **Hyperparameter sensitivity:** works with the official settings, whereas SIREN with its default ω₀ = 1 is 2–13× worse and diverges at a slightly higher learning rate (Experiment 2).
+
 ---
 
 ## Repository layout
