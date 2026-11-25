@@ -1,0 +1,96 @@
+===== Best weights used =====
+model      task  seed  params  rep_mse_e3  rep_psnr
+QIREN astronaut     0     657       4.979     29.05
+QIREN    camera     1     657       1.875     33.29
+QIREN    coffee     1     657       1.723     33.66
+SIREN astronaut     4     701       2.082     32.84
+SIREN    camera     4     701       0.616     38.12
+SIREN    coffee     1     701       1.162     35.37
+
+===== A. Multi-scale super-resolution: PSNR (dB), higher is better (scale 1 = training resolution) =====
+model            QIREN  SIREN winner
+task      scale                     
+astronaut 1      29.05  32.84  SIREN
+          2      21.87  21.49  QIREN
+          4      19.43  18.88  QIREN
+          8      18.37  17.73  QIREN
+camera    1      33.29  38.12  SIREN
+          2      26.23  26.14  QIREN
+          4      23.35  23.02  QIREN
+          8      21.92  21.52  QIREN
+coffee    1      33.66  35.37  SIREN
+          2      26.39  24.70  QIREN
+          4      23.57  21.92  QIREN
+          8      22.20  20.62  QIREN
+
+===== B. Relative spectral error per frequency band at 32x32, lower is better =====
+model            QIREN   SIREN winner
+task      band                       
+astronaut low   0.0011  0.0011  SIREN
+          mid   0.0258  0.0098  SIREN
+          high  0.2039  0.0705  SIREN
+camera    low   0.0004  0.0004  SIREN
+          mid   0.0419  0.0097  SIREN
+          high  0.1664  0.0428  SIREN
+coffee    low   0.0002  0.0004  QIREN
+          mid   0.0233  0.0133  SIREN
+          high  0.1235  0.0822  SIREN
+
+===== C. Weight noise: PSNR drop (dB) at 32x32, mean of 20 trials, lower is better =====
+sigma = noise std relative to the RMS of each parameter tensor
+model            QIREN  SIREN more robust
+task      sigma                          
+astronaut 0.003   5.05   1.22       SIREN
+          0.010  12.78   6.42       SIREN
+          0.030  17.90  14.07       SIREN
+          0.100  18.92  20.28       QIREN
+          0.300  20.06  22.28       QIREN
+camera    0.003   4.54   1.25       SIREN
+          0.010  13.02   7.03       SIREN
+          0.030  20.54  15.25       SIREN
+          0.100  23.90  23.31       SIREN
+          0.300  24.24  28.00       QIREN
+coffee    0.003   5.37   1.29       SIREN
+          0.010  13.71   6.59       SIREN
+          0.030  19.68  14.17       SIREN
+          0.100  21.71  21.24       SIREN
+          0.300  23.33  23.72       QIREN
+
+===== D. Weight quantization: PSNR (dB) at 32x32, higher is better =====
+bits per pixel = parameters x bits / 1024 pixels (QIREN 657 and SIREN 701 parameters)
+model           QIREN  SIREN winner
+task      bits                     
+astronaut 32    29.05  32.84  SIREN
+          16    29.05  32.83  SIREN
+          8     22.42  30.69  SIREN
+          6     13.04  23.70  SIREN
+          4     10.63  13.07  SIREN
+          3      7.28  11.40  SIREN
+          2     -2.34  11.09  SIREN
+camera    32    33.29  38.12  SIREN
+          16    33.29  38.12  SIREN
+          8     28.28  36.13  SIREN
+          6     15.32  26.92  SIREN
+          4     10.21  16.03  SIREN
+          3      8.49  11.97  SIREN
+          2     10.11  10.56  SIREN
+coffee    32    33.66  35.37  SIREN
+          16    33.66  35.37  SIREN
+          8     26.61  33.54  SIREN
+          6     14.97  25.03  SIREN
+          4     11.45  15.59  SIREN
+          3      9.99  13.44  SIREN
+          2     -0.70  10.91  SIREN
+
+===== Scoreboard (number of task/setting cases won) =====
+                                                test               wins
+  A. Super-resolution, scale 1 (training resolution)  QIREN 0 : 3 SIREN
+A. Super-resolution, scales 2-8 (unseen resolutions)  QIREN 9 : 0 SIREN
+                              B. Low-frequency error  QIREN 1 : 2 SIREN
+                              B. Mid-frequency error  QIREN 0 : 3 SIREN
+                             B. High-frequency error  QIREN 0 : 3 SIREN
+                       C. Robustness to weight noise QIREN 4 : 11 SIREN
+                             D. Quality at 8-16 bits  QIREN 0 : 6 SIREN
+                              D. Quality at 2-6 bits QIREN 0 : 12 SIREN
+
+Saved tables and figures to /content/drive/MyDrive/QIREN_paper_recheck/exp4_head_to_head

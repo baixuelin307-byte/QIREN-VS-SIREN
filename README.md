@@ -7,6 +7,7 @@ A reproduction of **QIREN** (*Quantum Implicit Neural Representations*, ICML 202
 | 1 | QIREN reproduction | Do we get the numbers in Table 1 of the QIREN paper? |
 | 2 | QIREN vs. SIREN at QIREN's scale | With ~700 parameters each, which model is better? |
 | 3 | QIREN on SIREN's original tasks | With SIREN's tasks, training settings and test protocol, which model is better? |
+| 4 | Head-to-head tests of the best weights | In which situations does each model win? (no retraining) |
 
 [Final verdict](#final-verdict-who-wins) · [Repository layout](#repository-layout) · [Reproducibility notes](#reproducibility-notes)
 
@@ -166,20 +167,121 @@ The StronglyEntanglingLayers unitaries `SEL` depend only on the weights, and `D(
 
 ---
 
+## Experiment 4: head-to-head tests of the best weights
+
+**Setup.** No training. We take the best QIREN and the best (tuned) SIREN from Experiment 2: ~700 parameters each, trained on 32×32 images.
+- **Weights:** for each model and image we take the best-epoch checkpoint of each of the 5 seeds, then keep the seed with the lowest 32×32 error. Selection uses only the training resolution, so none of the tests below influenced the choice.
+- **Chosen seeds:** QIREN 0 / 1 / 1 and SIREN 4 / 4 / 1 for Astronaut / Camera / Coffee.
+- **Evaluation mode:** `model.train()`, as in Experiments 1 and 2.
+- **PSNR:** pixels in [−1, 1], PSNR = 10·log₁₀(4 / MSE).
+
+Four tests:
+
+| Test | What we do | Question |
+|---|---|---|
+| A. Multi-scale super-resolution | Query the 32×32 model on 32, 64, 128 and 256 grids | Who degrades more slowly at unseen resolutions? |
+| B. Frequency bands | 2-D FFT of the 32×32 reconstruction; relative error in the low, mid and high thirds of the spectrum | Who captures coarse structure and fine detail better? |
+| C. Weight noise | Gaussian noise with std σ × (RMS of each parameter tensor), 20 trials per level | Who is more robust to parameter perturbations (a proxy for imprecise quantum gates)? |
+| D. Weight quantization | Symmetric uniform per-tensor quantization to 16, 8, 6, 4, 3 and 2 bits | Used as an image codec, who keeps more quality per bit? |
+
+### A. Multi-scale super-resolution: PSNR (dB), higher is better
+
+| Task | Scale | QIREN | SIREN | Winner |
+|---|---|---|---|---|
+| Astronaut | ×1 (training) | 29.05 | **32.84** | SIREN |
+| | ×2 | **21.87** | 21.49 | QIREN |
+| | ×4 | **19.43** | 18.88 | QIREN |
+| | ×8 | **18.37** | 17.73 | QIREN |
+| Camera | ×1 (training) | 33.29 | **38.12** | SIREN |
+| | ×2 | **26.23** | 26.14 | QIREN |
+| | ×4 | **23.35** | 23.02 | QIREN |
+| | ×8 | **21.92** | 21.52 | QIREN |
+| Coffee | ×1 (training) | 33.66 | **35.37** | SIREN |
+| | ×2 | **26.39** | 24.70 | QIREN |
+| | ×4 | **23.57** | 21.92 | QIREN |
+| | ×8 | **22.20** | 20.62 | QIREN |
+
+### B. Relative spectral error at 32×32, lower is better
+
+| Task | Band | QIREN | SIREN | Winner |
+|---|---|---|---|---|
+| Astronaut | low | 0.0011 | 0.0011 | tie |
+| | mid | 0.0258 | **0.0098** | SIREN |
+| | high | 0.2039 | **0.0705** | SIREN |
+| Camera | low | 0.0004 | 0.0004 | tie |
+| | mid | 0.0419 | **0.0097** | SIREN |
+| | high | 0.1664 | **0.0428** | SIREN |
+| Coffee | low | **0.0002** | 0.0004 | QIREN |
+| | mid | 0.0233 | **0.0133** | SIREN |
+| | high | 0.1235 | **0.0822** | SIREN |
+
+*The script counts low-band ties at 4 decimals as SIREN wins; they are shown here as ties.*
+
+### C. Weight noise: PSNR drop (dB) at 32×32, mean of 20 trials, lower is better
+
+| σ | Astronaut QIREN | Astronaut SIREN | Camera QIREN | Camera SIREN | Coffee QIREN | Coffee SIREN |
+|---|---|---|---|---|---|---|
+| 0.003 | 5.05 | **1.22** | 4.54 | **1.25** | 5.37 | **1.29** |
+| 0.01 | 12.78 | **6.42** | 13.02 | **7.03** | 13.71 | **6.59** |
+| 0.03 | 17.90 | **14.07** | 20.54 | **15.25** | 19.68 | **14.17** |
+| 0.1 | **18.92** | 20.28 | 23.90 | **23.31** | 21.71 | **21.24** |
+| 0.3 | **20.06** | 22.28 | **24.24** | 28.00 | **23.33** | 23.72 |
+
+### D. Weight quantization: PSNR (dB) at 32×32, higher is better
+
+| Bits | Astronaut QIREN | Astronaut SIREN | Camera QIREN | Camera SIREN | Coffee QIREN | Coffee SIREN |
+|---|---|---|---|---|---|---|
+| 32 (original) | 29.05 | **32.84** | 33.29 | **38.12** | 33.66 | **35.37** |
+| 16 | 29.05 | **32.83** | 33.29 | **38.12** | 33.66 | **35.37** |
+| 8 | 22.42 | **30.69** | 28.28 | **36.13** | 26.61 | **33.54** |
+| 6 | 13.04 | **23.70** | 15.32 | **26.92** | 14.97 | **25.03** |
+| 4 | 10.63 | **13.07** | 10.21 | **16.03** | 11.45 | **15.59** |
+| 3 | 7.28 | **11.40** | 8.49 | **11.97** | 9.99 | **13.44** |
+| 2 | −2.34 | **11.09** | 10.11 | **10.56** | −0.70 | **10.91** |
+
+At 32×32, one bit per parameter corresponds to 0.64 (QIREN) or 0.68 (SIREN) bits per pixel.
+
+### Scoreboard (number of cases won)
+
+| Test | QIREN : SIREN |
+|---|---|
+| A. Training resolution (×1) | 0 : **3** |
+| A. Unseen resolutions (×2, ×4, ×8) | **9** : 0 |
+| B. Low-frequency error | 1 : 0 (2 ties) |
+| B. Mid- and high-frequency error | 0 : **6** |
+| C. Weight noise, σ ≤ 0.03 (image still usable) | 0 : **9** |
+| C. Weight noise, σ ≥ 0.1 (both destroyed, drops of 19–28 dB) | 4 : 2 |
+| D. Quantization, 16 and 8 bits | 0 : **6** |
+| D. Quantization, 6 to 2 bits | 0 : **12** |
+
+**Findings**
+- **The ranking flips at unseen resolutions.** SIREN wins every training-resolution case by 1.7–4.8 dB, and QIREN wins all 9 unseen-resolution cases, by 0.1–1.7 dB. QIREN's lead is largest on Coffee: 1.6–1.7 dB at ×4 and ×8.
+- **QIREN represents a smoother, lower-frequency function.** Low-frequency errors are equal, but SIREN's mid- and high-frequency errors are 1.5–4× lower. This is consistent with the flip in A: QIREN fits fewer fine details of the 32×32 grid and interpolates more smoothly between its pixels, while SIREN fits that detail and generalizes worse. We present this as an interpretation, not a proven cause.
+- **QIREN is much more sensitive to its parameters.**
+  - *Weight noise:* at σ = 0.003, QIREN loses about 5 dB and SIREN about 1.2 dB; at σ = 0.01, QIREN loses about 13 dB and SIREN about 6–7 dB. QIREN's wins at σ ≥ 0.1 come only after both models are already destroyed, so they carry no information.
+  - *Quantization:* at 8 bits QIREN loses 5–7 dB and SIREN about 2 dB; at 6 bits and below QIREN breaks down.
+  - *Implication:* this is a practical concern for running QIREN on real quantum hardware, where gate parameters are never exact.
+- **Caveats.** These tests use one seed per model, the best one. In train mode, QIREN's BatchNorm uses the statistics of the queried grid, so test A partly measures this mechanism. It is part of how QIREN works, and it is also how the paper evaluates super-resolution.
+
+Code: [`code/exp4_head_to_head/`](code/exp4_head_to_head). Full output: [`results/exp4_head_to_head/exp4_output.txt`](results/exp4_head_to_head/exp4_output.txt).
+
+---
+
 ## Final verdict: who wins?
 
-| | Experiment 1: QIREN paper | Experiment 2: same size (~700 params) | Experiment 3: SIREN's tasks |
-|---|---|---|---|
-| **Setting** | QIREN's tasks and protocol | QIREN's tasks, SIREN tuned | SIREN's tasks, settings and test protocol |
-| **Fitting accuracy** | QIREN beats ReLU, Tanh, ReLU+RFF | 🏆 **SIREN (tuned)** | 🏆 **SIREN**, by a wide margin |
-| **Super-resolution / generalization** | QIREN beats ReLU, Tanh, ReLU+RFF | 🏆 **QIREN**: ties or wins SR, degrades 2–3× less | not tested by SIREN's protocol |
-| **Parameter efficiency** | similar sizes by design | similar sizes by design | 🏆 **QIREN**: within ~2 dB of ReLU on the image with 300× fewer parameters |
-| **Compute cost** | QIREN ~20–25× slower | QIREN ~20–25× slower | QIREN infeasible without our exact fast simulation |
-| **Applicable tasks** | all | all | 🏆 **SIREN**: QIREN cannot do derivative-based tasks (BatchNorm) |
+| | Experiment 1: QIREN paper | Experiment 2: same size (~700 params) | Experiment 3: SIREN's tasks | Experiment 4: best weights head-to-head |
+|---|---|---|---|---|
+| **Setting** | QIREN's tasks and protocol | QIREN's tasks, SIREN tuned | SIREN's tasks, settings and test protocol | Exp. 2 weights, no retraining |
+| **Fitting accuracy** | QIREN beats ReLU, Tanh, ReLU+RFF | 🏆 **SIREN (tuned)** | 🏆 **SIREN**, by a wide margin | 🏆 **SIREN**: 3 : 0 at training resolution; 6 : 0 on mid/high frequencies |
+| **Super-resolution / generalization** | QIREN beats ReLU, Tanh, ReLU+RFF | 🏆 **QIREN**: ties or wins SR, degrades 2–3× less | not tested by SIREN's protocol | 🏆 **QIREN**: 9 : 0 at ×2, ×4, ×8 |
+| **Parameter efficiency** | similar sizes by design | similar sizes by design | 🏆 **QIREN**: within ~2 dB of ReLU on the image with 300× fewer parameters | similar sizes by design |
+| **Robustness and compression** | – | – | – | 🏆 **SIREN**: 9 : 0 under usable weight noise, 18 : 0 under quantization |
+| **Compute cost** | QIREN ~20–25× slower | QIREN ~20–25× slower | QIREN infeasible without our exact fast simulation | – |
+| **Applicable tasks** | all | all | 🏆 **SIREN**: QIREN cannot do derivative-based tasks (BatchNorm) | – |
 
-**Overall, SIREN wins.** It fits signals more accurately at every scale we tested, scales to large images, audio and video, and supports derivative-based tasks such as Poisson, SDF and Helmholtz.
+**Overall, SIREN wins.** It fits signals more accurately at every scale we tested, scales to large images, audio and video, supports derivative-based tasks such as Poisson, SDF and Helmholtz, and is far more robust to weight noise and quantization (Experiment 4).
 
-**QIREN's real strength is generalization at a very small parameter budget.** At ~700 parameters it degrades far less than SIREN on unseen resolutions, and super-resolution is the one place where it ties or beats tuned SIREN. This supports the QIREN paper's super-resolution claim. The paper's claim that QIREN *represents* signals better than SIREN holds only against an untuned SIREN.
+**QIREN's real strength is generalization at a very small parameter budget.** At ~700 parameters it degrades far less than SIREN on unseen resolutions: it ties or beats tuned SIREN at ×2 (Experiment 2) and wins all 9 cases from ×2 to ×8 (Experiment 4). Its smoother, lower-frequency representation is consistent with this advantage, and it is also why it loses on fine detail at the training resolution. Its main weakness besides scale is sensitivity to its parameters, which matters for real quantum hardware. This supports the QIREN paper's super-resolution claim. The paper's claim that QIREN *represents* signals better than SIREN holds only against an untuned SIREN.
 
 **How faithful is the reproduction?** The experimental pipeline reproduces the paper (baselines match, and QIREN's ranking against the classical baselines holds). QIREN's absolute representation errors are 14–70% higher than reported. Part of this is run-to-run variation (see below), and the paper's undisclosed SIREN settings make that comparison impossible to match exactly.
 
@@ -197,11 +299,15 @@ code/
     2_train_audio.py                       # QIREN and SIREN, Bach and Counting
     3_train_video.py                       # QIREN, cat video
     4_test_all.py                          # test every model with SIREN's protocol, plus figure
+  exp4_head_to_head/
+    0_setup.py                             # restore QIREN code, data loaders and model builder
+    1_head_to_head_tests.py                # tests A-D on the best weights, tables, scoreboard and figures
   collect_results.py                       # check all results on Drive and package this repository
 results/
   exp1_qiren_vs_paper/                     # 100 run logs, best-epoch summaries, environment
   exp2_qiren_vs_siren/                     # SIREN default and tuning runs, selected hyperparameters, grid
   exp3_qiren_on_siren_tasks/               # result.json and best weights per run, test_results.csv
+  exp4_head_to_head/                       # full output of Experiment 4
   siren_reproduction/                      # Fig. 5 metrics
 figures/
   exp3/                                    # QIREN vs. SIREN on SIREN's tasks
