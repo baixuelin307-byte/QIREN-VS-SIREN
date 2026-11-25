@@ -175,14 +175,37 @@ The StronglyEntanglingLayers unitaries `SEL` depend only on the weights, and `D(
 - **Evaluation mode:** `model.train()`, as in Experiments 1 and 2.
 - **PSNR:** pixels in [−1, 1], PSNR = 10·log₁₀(4 / MSE).
 
-Four tests:
+Four tests. Each one compares the **same two sets of weights** on one property, and each has a single rule for who wins a case.
 
-| Test | What we do | Question |
-|---|---|---|
-| A. Multi-scale super-resolution | Query the 32×32 model on 32, 64, 128 and 256 grids | Who degrades more slowly at unseen resolutions? |
-| B. Frequency bands | 2-D FFT of the 32×32 reconstruction; relative error in the low, mid and high thirds of the spectrum | Who captures coarse structure and fine detail better? |
-| C. Weight noise | Gaussian noise with std σ × (RMS of each parameter tensor), 20 trials per level | Who is more robust to parameter perturbations (a proxy for imprecise quantum gates)? |
-| D. Weight quantization | Symmetric uniform per-tensor quantization to 16, 8, 6, 4, 3 and 2 bits | Used as an image codec, who keeps more quality per bit? |
+| Test | Property compared | Score per case | Who wins a case | Cases |
+|---|---|---|---|---|
+| A. Multi-scale super-resolution | Fitting accuracy (×1) and generalization to unseen resolutions (×2, ×4, ×8) | PSNR (dB) | Higher PSNR | 3 images × 4 scales |
+| B. Frequency bands | How well coarse structure (low band) and fine detail (mid and high bands) are reproduced | Relative spectral error | Lower error | 3 images × 3 bands |
+| C. Weight noise | Robustness to small errors in the parameters | PSNR drop (dB) | Smaller drop | 3 images × 5 noise levels |
+| D. Weight quantization | Quality left after storing the weights with fewer bits | PSNR (dB) | Higher PSNR | 3 images × 6 bit widths |
+
+**A. Multi-scale super-resolution: is the model good only on the pixels it was trained on, or also between them?**
+- Each model was trained on the 32×32 image only. We query it on 32×32, 64×64, 128×128 and 256×256 coordinate grids covering the same [−1, 1]² square.
+- Each output is compared with the real image resized to that grid, and scored by PSNR = 10·log₁₀(4 / MSE) (pixels in [−1, 1]).
+- **×1 (32×32)** measures how well the model fits its training pixels. **×2 to ×8** measure how well it fills in pixels it never saw, which is super-resolution.
+- A model that fits the training pixels exactly but oscillates between them wins at ×1 and loses at ×2 to ×8.
+
+**B. Frequency bands: does the model get the coarse layout, the fine detail, or both?**
+- We take the 2-D Fourier transform of the 32×32 reconstruction and of the ground truth.
+- The spectrum is split by radial frequency into three rings of equal width: **low** (the lowest third, coarse shapes and brightness), **mid** (medium-scale structure) and **high** (edges and texture, up to the Nyquist frequency).
+- In each ring, relative error = Σ|F_pred − F_gt|² / Σ|F_gt|², i.e. the share of that band's energy the model gets wrong. 0 is perfect.
+- This explains test A: a model with low error in the low band but high error in the high band produces a smooth image.
+
+**C. Weight noise: how much does a small error in the parameters hurt?**
+- For each noise level σ ∈ {0.003, 0.01, 0.03, 0.1, 0.3}, we add Gaussian noise to every parameter tensor, with standard deviation σ × (RMS of that tensor). σ = 0.01 is a 1% error relative to the typical weight size. For QIREN this includes the rotation angles of the quantum gates.
+- Each level is repeated 20 times with noise seeds 0–19, the same seeds for both models. We report the mean PSNR drop at 32×32 relative to the noise-free weights.
+- This is a proxy for running QIREN on real hardware, where gate angles are never exact.
+- Only σ ≤ 0.03 is informative: at σ ≥ 0.1 both models have lost 19–28 dB and the images are no longer usable.
+
+**D. Weight quantization: how many bits per weight does each model need?**
+- Each parameter tensor is rounded to b bits: w_q = round(w / max|w| · L) / L · max|w|, with L = 2^(b−1) − 1, for b ∈ {16, 8, 6, 4, 3, 2}. We then measure PSNR at 32×32.
+- This treats the network as an image codec: the image is stored as its weights. The cost is parameters × bits / 1,024 pixels, i.e. 0.64 (QIREN) or 0.68 (SIREN) bits per pixel for each bit per weight. The two costs are almost equal, so comparing at the same b is fair.
+- A model that keeps its PSNR at fewer bits is cheaper to store and more tolerant of low-precision hardware.
 
 ### A. Multi-scale super-resolution: PSNR (dB), higher is better
 
@@ -288,6 +311,22 @@ Code: [`code/exp4_head_to_head/`](code/exp4_head_to_head). Full output: [`result
 **QIREN's real strength is generalization at a very small parameter budget.** At ~700 parameters it degrades far less than SIREN on unseen resolutions: it ties or beats tuned SIREN at ×2 (Experiment 2) and wins all 9 cases from ×2 to ×8 (Experiment 4). Its smoother, lower-frequency representation is consistent with this advantage, and it is also why it loses on fine detail at the training resolution. Its main weakness besides scale is sensitivity to its parameters, which matters for real quantum hardware. This supports the QIREN paper's super-resolution claim. The paper's claim that QIREN *represents* signals better than SIREN holds only against an untuned SIREN.
 
 **How faithful is the reproduction?** The experimental pipeline reproduces the paper (baselines match, and QIREN's ranking against the classical baselines holds). QIREN's absolute representation errors are 14–70% higher than reported. Part of this is run-to-run variation (see below), and the paper's undisclosed SIREN settings make that comparison impossible to match exactly.
+
+### Where each model is better
+
+**SIREN is better at:**
+- **Accuracy at the training resolution:** wins all 4 tasks at ~700 parameters (Camera MSE 0.62 vs. 1.87 ×10⁻³), by 1.7–4.8 dB PSNR (Experiments 2 and 4).
+- **Fine detail:** its mid- and high-frequency errors are 1.5–4× lower; low-frequency errors are equal (Experiment 4B).
+- **Large signals:** +33 dB on the 256×256 image, +13.5 dB on the video, 30–4,000× lower audio MSE (Experiment 3, at SIREN's scale).
+- **Robustness:** at 0.3% relative weight noise it loses 1.2 dB vs. QIREN's 5 dB; at 8 bits it loses ~2 dB vs. QIREN's 5–7 dB (Experiment 4C–D).
+- **Range of tasks:** supports derivative-based tasks (Poisson, SDF, Helmholtz); QIREN's input Laplacian is identically zero because of BatchNorm (Experiment 3).
+- **Compute cost:** QIREN is ~20–25× slower because its circuit is simulated (Experiments 2 and 3).
+
+**QIREN is better at:**
+- **Unseen resolutions (super-resolution):** wins all 9 cases from ×2 to ×8, by 0.1–1.7 dB, and beats tuned SIREN on Coffee 32→64 (MSE 9.18 vs. 13.55 ×10⁻³) (Experiments 2 and 4A).
+- **Resolution generalization:** SR error ÷ representation error is ~5, vs. 12–16 for SIREN (Experiment 2).
+- **Parameter efficiency:** with 657 parameters it is within ~2 dB of ReLU and Tanh networks that have ~300× more parameters (Experiment 3).
+- **Hyperparameter sensitivity:** works with the official settings, whereas SIREN with its default ω₀ = 1 is 2–13× worse and diverges at a slightly higher learning rate (Experiment 2).
 
 ---
 
