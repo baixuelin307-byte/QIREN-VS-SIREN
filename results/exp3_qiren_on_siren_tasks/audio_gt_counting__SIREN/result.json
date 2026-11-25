@@ -1,0 +1,9 @@
+{
+  "task": "audio_gt_counting__SIREN",
+  "steps": 9001,
+  "lr": 0.0001,
+  "seed": 0,
+  "best_step": 8941,
+  "best_error": 0.00023137631069403142,
+  "best_report": "MSE 0.000231376"
+}

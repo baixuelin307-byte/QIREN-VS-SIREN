@@ -1,0 +1,9 @@
+{
+  "task": "audio_gt_counting__QIREN",
+  "steps": 9001,
+  "lr": 0.0001,
+  "seed": 0,
+  "best_step": 9000,
+  "best_error": 0.007429206278175116,
+  "best_report": "MSE 0.00742921"
+}

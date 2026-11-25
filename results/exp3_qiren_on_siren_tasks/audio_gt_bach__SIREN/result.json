@@ -1,0 +1,9 @@
+{
+  "task": "audio_gt_bach__SIREN",
+  "steps": 9001,
+  "lr": 0.0001,
+  "seed": 0,
+  "best_step": 8962,
+  "best_error": 6.047125225450145e-06,
+  "best_report": "MSE 6.04713e-06"
+}

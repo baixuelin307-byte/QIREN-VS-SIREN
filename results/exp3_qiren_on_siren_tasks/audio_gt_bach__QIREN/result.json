@@ -1,0 +1,9 @@
+{
+  "task": "audio_gt_bach__QIREN",
+  "steps": 9001,
+  "lr": 0.0001,
+  "seed": 0,
+  "best_step": 8994,
+  "best_error": 0.024202389642596245,
+  "best_report": "MSE 0.0242024"
+}

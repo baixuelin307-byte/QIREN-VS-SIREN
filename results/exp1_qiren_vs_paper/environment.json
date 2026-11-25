@@ -1,0 +1,10 @@
+{
+  "repo": "https://github.com/GGorMM1/QIREN",
+  "commit": "56ab4010ee3fbb3371c9d5d5f5284a8c41d4e6f3",
+  "python": "3.13.18",
+  "torch": "2.14.1+cpu",
+  "torchvision": "0.29.1+cpu",
+  "pennylane": "0.45.1",
+  "skimage": "0.25.2",
+  "scipy": "1.16.3"
+}

@@ -1,0 +1,26 @@
+{
+  "sound": {
+    "omega": 30,
+    "lr": 0.001,
+    "tune_seed": 123,
+    "tune_last_loss": 0.005234
+  },
+  "coffee": {
+    "omega": 10,
+    "lr": 0.01,
+    "tune_seed": 123,
+    "tune_last_loss": 0.002776
+  },
+  "camera": {
+    "omega": 10,
+    "lr": 0.01,
+    "tune_seed": 123,
+    "tune_last_loss": 0.000819
+  },
+  "astronaut": {
+    "omega": 10,
+    "lr": 0.01,
+    "tune_seed": 123,
+    "tune_last_loss": 0.003589
+  }
+}

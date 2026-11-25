@@ -1,0 +1,9 @@
+task,model,metric,value,note
+Image fitting (cameraman 256×256),QIREN,PSNR (dB),23.73,full image
+Audio: Bach,QIREN,MSE,0.024202,full signal
+Audio: Bach,SIREN,MSE,6.0471e-06,full signal
+Audio: Counting,QIREN,MSE,0.0074292,full signal
+Audio: Counting,SIREN,MSE,0.00023138,full signal
+Video: Cat,QIREN,"PSNR (dB), all frames",18.25 ± 0.95,best_weights.pth; 300 frames
+Video: Cat,SIREN official (sine),"PSNR (dB), all frames",31.77 ± 1.00,model_final.pth; 300 frames
+Video: Cat,SIREN official (relu),"PSNR (dB), all frames",25.52 ± 1.12,model_final.pth; 300 frames

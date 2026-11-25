@@ -1,0 +1,11 @@
+metric,paper_MSE,our_MSE,note
+Grid Solver / velocity,0.017,,missing grid/full-field reference
+Grid Solver / FWI wavefield,2.6e-05,,missing grid/full-field reference
+SIREN / known-velocity direct,7.9e-06,,missing grid/full-field reference
+SIREN / FWI velocity,0.0086,0.09212662231898788,computed from checkpoint
+SIREN / FWI wavefield,0.0001,,missing grid/full-field reference
+SIREN / receiver-only MSE,,3.578526772194488e-07,"30 receivers, 5 sources; NOT paper FWI wavefield MSE"
+Uniform Helmholtz / SIREN vs rescaled closed form,,4.577091749524698e-05,not Figure 5 FWI MSE
+Uniform Helmholtz / RBF vs rescaled closed form,,0.010165185667574406,not Figure 5 FWI MSE
+Uniform Helmholtz / Tanh vs rescaled closed form,,0.006804910022765398,not Figure 5 FWI MSE
+Uniform Helmholtz / ReLU vs rescaled closed form,,0.009233674965798855,not Figure 5 FWI MSE

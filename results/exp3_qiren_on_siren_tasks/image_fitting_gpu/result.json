@@ -1,0 +1,10 @@
+{
+  "task": "image_fitting (SIREN, cameraman 256x256)",
+  "steps": 15000,
+  "lr": 0.0001,
+  "seed": 0,
+  "best_step": 14999,
+  "best_mse": 0.016949988901615143,
+  "best_psnr": 23.72890573152807,
+  "psnr_last1000_mean": 23.680363303175398
+}
