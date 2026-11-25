@@ -254,6 +254,10 @@ At 32×32, one bit per parameter corresponds to 0.64 (QIREN) or 0.68 (SIREN) bit
 | D. Quantization, 16 and 8 bits | 0 : **6** |
 | D. Quantization, 6 to 2 bits | 0 : **12** |
 
+![Experiment 4: super-resolution, spectral error, weight noise and quantization](figures/exp4/exp4_curves.png)
+
+*Rows: A. super-resolution, B. spectral error per band, C. PSNR drop under weight noise, D. PSNR under quantization. Red: QIREN; blue: SIREN.*
+
 **Findings**
 - **The ranking flips at unseen resolutions.** SIREN wins every training-resolution case by 1.7–4.8 dB, and QIREN wins all 9 unseen-resolution cases, by 0.1–1.7 dB. QIREN's lead is largest on Coffee: 1.6–1.7 dB at ×4 and ×8.
 - **QIREN represents a smoother, lower-frequency function.** Low-frequency errors are equal, but SIREN's mid- and high-frequency errors are 1.5–4× lower. This is consistent with the flip in A: QIREN fits fewer fine details of the 32×32 grid and interpolates more smoothly between its pixels, while SIREN fits that detail and generalizes worse. We present this as an interpretation, not a proven cause.
@@ -311,6 +315,7 @@ results/
   siren_reproduction/                      # Fig. 5 metrics
 figures/
   exp3/                                    # QIREN vs. SIREN on SIREN's tasks
+  exp4/                                    # Experiment 4 curves
   siren_reproduction/                      # SIREN paper figures we reproduced
 ```
 
